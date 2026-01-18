@@ -42,10 +42,10 @@ prices <- tq_get(
 
 
 close_df <- prices %>%
-  select(symbol, date, close) %>%
+  select(symbol, date, adjusted) %>%
   pivot_wider(
     names_from  = symbol,
-    values_from = close
+    values_from = adjusted
   )
 
 
@@ -60,4 +60,47 @@ close_clean <- close_xts[, colSums(is.na(close_xts)) == 0]
 returns <- na.omit(diff(log(close_clean)))
 
 
+
+
+
+avg_volume <- prices %>%
+  group_by(symbol) %>%
+  summarise(
+    avg_volume = mean(volume, na.rm = TRUE),
+    median_volume = median(volume, na.rm = TRUE)
+  )
+
+
+presence_days <- prices %>%
+  group_by(symbol) %>%
+  summarise(
+    trading_days = sum(volume > 0, na.rm = TRUE),
+    total_days   = n(),
+    presence_ratio = trading_days / total_days
+  )
+
+
+turnover <- prices %>%
+  mutate(turnover = close * volume) %>%
+  group_by(symbol) %>%
+  summarise(
+    avg_turnover = mean(turnover, na.rm = TRUE)
+  )
+
+relative_volume <- prices %>%
+  group_by(symbol) %>%
+  summarise(avg_volume = mean(volume, na.rm = TRUE)) %>%
+  mutate(rel_volume = avg_volume / median(avg_volume, na.rm = TRUE))
+
+
+liquidity_panel <- avg_volume %>%
+  left_join(presence_days, by = "symbol") %>%
+  left_join(turnover, by = "symbol")
+
+
+liquidity_panel<-liquidity_panel %>%
+  filter(
+    presence_ratio > 0.6,
+    avg_turnover > quantile(avg_turnover, 0.3, na.rm = TRUE)
+  )
 

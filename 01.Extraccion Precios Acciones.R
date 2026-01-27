@@ -1,37 +1,258 @@
-#Version 0.1 - En desarrollo
+
+# PARTE 1 DEL RECOMENDADOR DE CARTERAS:
+
+#ESTA PARTE PERMITE REALIZAR LA EXTRACCION
+# Y PREPROCESO DE LA BASE DE LOS PRECIOS, LA IMPORTACION DE LA BASE DE TENENCIA
+# CUALQUIER DUDA CONSULTAR AL AUTOR: 
+# RODRIGO ESCOBAR LANDAETA | RESCOBARL@FEN.UCHILE.CL | LANDAETA77@GMAIL.COM
 
 
-library(tidyquant)
+library(readr)
 library(dplyr)
-library(tidyr)
-library(xts)
+library(tidyquant)
+
+
+# CARGA DE ARCHIVO CRM DE TENENCIA
+
+TBL_DATA_SHARES_ACCOUNTS <- read_csv2("TBL_DATA_SHARES_ACCOUNTS.csv")
+
+# EXTRACCION DE LOS NEMOTECNICOS DE LA BASE DE LA TENENCIA
+
+tickers <- TBL_DATA_SHARES_ACCOUNTS %>%
+  distinct(NEMO) %>%
+  pull(NEMO)
+
+# GENERAR EL DATAFRAME CON EL ULTIMO PRECIO AJUSTADO DE CADA UNO DE LOS TICKERS
+
+precios_ultimo <- tq_get(
+  tickers,
+  get  = "stock.prices",
+  from = Sys.Date() - 10
+) %>%
+  group_by(symbol) %>%
+  slice_max(order_by = date, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  transmute(
+    NEMO = symbol,
+    PRECIO_ULT = adjusted
+  )
 
 
 
-# Listado de acciones
 
 
-tickers <- c(
-  "AGUAS-A.SN","ANDINA-A.SN","ANDINA-B.SN","ANTARCHILE.SN","BCI.SN","BESALCO.SN",
-  "NITRATOS.SN","POTASIOS-A.SN","CAP.SN","CMPC.SN","CCU.SN","CENCOSUD.SN",
-  "CHILE.SN","ALMENDRAL.SN","CONCHATORO.SN","CAMANCHACA.SN","ITAUCL.SN","COLBUN.SN",
-  "COPEC.SN","CRISTALES.SN","ECL.SN","EISA.SN","EMBONOR-B.SN","ENELGXCH.SN",
-  "ENELDXCH.SN","ENELAM.SN","ENTEL.SN","ENAEX.SN","FALABELLA.SN","FORUS.SN",
-  "HITES.SN","IAM.SN","INGEVEC.SN","ILC.SN","INVERCAP.SN","ABC.SN",
-  "MASISA.SN","MULTI-X.SN","NORTEGRAN.SN","ORO-BLANCO.SN","PARAUCO.SN","PAZ.SN",
-  "QUINENCO.SN","RIPLEY.SN","SALFACORP.SN","SOCOVESA.SN","SK.SN","SONDA.SN",
-  "SQM-B.SN","BSANTANDER.SN","VAPORES.SN","WATTS.SN","BLUMAR.SN","ENELCHILE.SN",
-  "TRICOT.SN","SMU.SN","SALMOCAM.SN","MALLPLAZA.SN","CENCOMALLS.SN","MANQUEHUE.SN",
-  "CEMENTOS.SN","POLPAICO.SN","HABITAT.SN",
-  "PROVIDA.SN","CUPRUM.SN","AFPCAPITAL.SN","EMBONOR-A.SN","ZOFRI.SN","ENJOY.SN",
-  "SQM-A.SN","SOQUICOM.SN","AZUL-AZUL.SN","COLO-COLO.SN","CRUZADOS.SN",
-  "LTM.SN","BANVIDA.SN","CALICHERAA.SN","CALICHERAB.SN","CAROZZI.SN","CGE.SN",
-  "CGET.SN","CTC.SN","COPEVAL.SN","ELECMETAL.SN","HIPERMARC.SN","IANSA.SN",
-  "ENLASA.SN","FOSFOROS.SN","INDISA.SN","LAS-CONDES.SN","MELON.SN","MARINSA.SN",
-  "MOLLER.SN","MINERA.SN","MOLYMET.SN","PLANVITAL.SN","SIEMEL.SN","SCOTIABKCL.SN",
-  "PUCOBRE.SN","PASUR.SN","TRICAHUE.SN","VOLCAN.SN","AAISA.SN","CAMPOS.SN",
-  "CINTAC.SN","DUNCANFOX.SN"
+
+
+# CHECK PARA EVITAR TICKETS VACIOSS
+
+
+faltantes <- setdiff(tickers, precios_ultimo$NEMO)
+
+# RESET YAHOO FINANCE
+
+Sys.sleep(5)
+
+
+if (length(faltantes) > 0) {
+  
+  Sys.sleep(5)
+  
+  precios_reintento <- tq_get(
+    faltantes,
+    get  = "stock.prices",
+    from = Sys.Date() - 10
+  ) %>%
+    group_by(symbol) %>%
+    slice_max(order_by = date, n = 1, with_ties = FALSE) %>%
+    ungroup() %>%
+    transmute(
+      NEMO = symbol,
+      PRECIO_ULT = adjusted
+    )
+  
+  precios_ultimo <- bind_rows(
+    precios_ultimo,
+    precios_reintento
+  )
+  
+}
+
+
+setdiff(tickers, precios_ultimo$NEMO)
+
+
+
+# GENERAR EL DATAFRAME CON EL SET DE PRECIOS DE LOS ULTIMOS 365 DIAS AJUSTADO DE CADA UNO DE LOS TICKERS
+
+precios_hist <- tq_get(
+  tickers,
+  get  = "stock.prices",
+  from = Sys.Date() - 365
 )
+
+
+
+tickers_ok <- precios_hist %>%
+  distinct(symbol) %>%
+  pull(symbol)
+
+tickers_fallidos <- setdiff(tickers, tickers_ok)
+
+tickers_fallidos
+
+
+if (length(tickers_fallidos) > 0) {
+  
+  Sys.sleep(5)
+  
+  precios_hist_2 <- tq_get(
+    tickers_fallidos,
+    get  = "stock.prices",
+    from = Sys.Date() - 365
+  )
+  
+} else {
+  precios_hist_2 <- NULL
+}
+
+
+precios_hist <- bind_rows(
+  precios_hist,
+  precios_hist_2
+)
+
+
+
+tickers_ok <- precios_hist %>%
+  distinct(symbol) %>%
+  pull(symbol)
+
+tickers_fallidos <- setdiff(tickers, tickers_ok)
+
+
+n_distinct(precios_hist$symbol)
+length(tickers)
+
+
+# OBTENER EL DATO DEL TIPO DE CAMBIO USD->CLP PARA ACCIONES EXTRANJERAS
+
+usdclp <- tq_get(
+  "USDCLP=X",
+  get  = "stock.prices",
+  from = Sys.Date() - 10
+) %>%
+  filter(date == max(date)) %>%
+  pull(adjusted)
+
+
+# PEGAR EL ULTIMO PRECIO A LA TABLA DE TENENCIA TBL_DATA_SHARES_ACCOUNTS
+
+TBL_DATA_SHARES_ACCOUNTS <- TBL_DATA_SHARES_ACCOUNTS %>%
+  left_join(precios_ultimo, by = "NEMO")
+
+# TRANSFORMAR DE DOLAR A PESOS LAS ACCIONES EXTRANJERAS
+
+TBL_DATA_SHARES_ACCOUNTS <- TBL_DATA_SHARES_ACCOUNTS %>%
+  mutate(
+    PRECIO_CLP = if_else(
+      CATEGORIA == "EXTRANJERA",
+      PRECIO_ULT * usdclp,
+      PRECIO_ULT
+    )
+  )
+
+# CALCULAR EL MONTO TOTAL EN CUSTODIA CON EL ULTIMO PRECIO ENCONTRADO
+
+TBL_DATA_SHARES_ACCOUNTS <- TBL_DATA_SHARES_ACCOUNTS %>%
+  mutate(MONTO_CUSTODIA = CANTIDAD_EN_CUSTODIA * PRECIO_CLP)
+
+# VERIFICACION DE TICKERS VACIOS
+
+TBL_DATA_SHARES_ACCOUNTS %>% filter(is.na(PRECIO_ULT)) %>% distinct(NEMO)
+
+
+
+total_cuenta <- TBL_DATA_SHARES_ACCOUNTS %>%
+  group_by(ID_CLIENTE, ID_CUENTA) %>%
+  summarise(
+    TOTAL_MONTO_CUSTODIA = sum(MONTO_CUSTODIA, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+TABLA_PESOS_CUENTA <- TBL_DATA_SHARES_ACCOUNTS %>%
+  left_join(total_cuenta, by = c("ID_CLIENTE", "ID_CUENTA")) %>%
+  mutate(
+    PESO = MONTO_CUSTODIA / TOTAL_MONTO_CUSTODIA
+  ) %>%
+  select(
+    ID_CLIENTE,
+    ID_CUENTA,
+    NEMO,
+    PESO
+  )
+
+
+metricas_accion <- precios_hist %>%
+  group_by(symbol) %>%
+  tq_transmute(
+    select     = adjusted,
+    mutate_fun = periodReturn,
+    period     = "daily",
+    col_rename = "RET_DIARIO"
+  ) %>%
+  summarise(
+    RET_PROM_DIARIO = mean(RET_DIARIO, na.rm = TRUE),
+    DE_DIARIA       = sd(RET_DIARIO, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  rename(NEMO = symbol)
+
+
+pesos_metricas <- TABLA_PESOS_CUENTA %>%
+  inner_join(metricas_accion, by = "NEMO")
+
+
+TABLA_INDICADORES_CUENTA <- pesos_metricas %>%
+  group_by(ID_CLIENTE, ID_CUENTA) %>%
+  summarise(
+    RET_PROM_DIARIO = sum(PESO * RET_PROM_DIARIO, na.rm = TRUE),
+    
+    DE_DIARIA = sqrt(
+      sum((PESO^2) * (DE_DIARIA^2), na.rm = TRUE)
+    ),
+    
+    RET_PROM_MENSUAL = RET_PROM_DIARIO * 21,
+    DE_MENSUAL       = DE_DIARIA * sqrt(21),
+    
+    RET_PROM_ANUAL   = RET_PROM_DIARIO * 252,
+    DE_ANUAL         = DE_DIARIA * sqrt(252),
+    
+    .groups = "drop"
+  )
+
+
+
+TBL_DATA_SHARES_ACCOUNTS_FINAL <- TBL_DATA_SHARES_ACCOUNTS %>%
+  left_join(
+    TABLA_INDICADORES_CUENTA,
+    by = c("ID_CLIENTE", "ID_CUENTA")
+  )
+
+TBL_DATA_SHARES_ACCOUNTS_FINAL <- TBL_DATA_SHARES_ACCOUNTS_FINAL %>%
+  left_join(
+    TABLA_PESOS_CUENTA,
+    by = c("ID_CLIENTE", "ID_CUENTA","NEMO")
+  )
+
+
+
+write.table(TBL_DATA_SHARES_ACCOUNTS_FINAL, file = "TBL_DATA_SHARES_ACCOUNTS_FINAL.CSV", sep = ";",
+            na = "", dec = ",", row.names = FALSE,
+            col.names = TRUE)
+
+
+
 
 prices <- tq_get(
   x = tickers,
@@ -103,4 +324,28 @@ liquidity_panel<-liquidity_panel %>%
     presence_ratio > 0.6,
     avg_turnover > quantile(avg_turnover, 0.3, na.rm = TRUE)
   )
+
+
+
+
+
+
+write.table(avg_volume, file = "TICKETS.CSV", sep = ";",
+            na = "", dec = ",", row.names = FALSE,
+            col.names = TRUE)
+
+
+write.table(close_df, file = "close_df.CSV", sep = ";",
+            na = "", dec = ",", row.names = FALSE,
+            col.names = TRUE)
+
+
+
+
+
+
+write.table(TBL_Q_TICKERS_EXTRANJERA, file = "TBL_Q_TICKERS_EXTRANJERA.CSV", sep = ";",
+            na = "", dec = ",", row.names = FALSE,
+            col.names = TRUE)
+
 
